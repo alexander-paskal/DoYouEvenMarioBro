@@ -1,0 +1,4 @@
+name: ece202
+channels:
+  - defaults
+prefix: /home/alexander/anaconda3/envs/ece202
