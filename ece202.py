@@ -43,13 +43,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self._mode = StateMachineModes.IDLE
         self._state_machine_count_down = 0
         self._tick_count = 0
+
         #self._record_state = False
-         
         self.calibration_data = {
-            StateMachineModes.CALIBRATE_P1_RELAX: [],
-            StateMachineModes.CALIBRATE_P1_FLEX: [],
-            StateMachineModes.CALIBRATE_P2_RELAX: [],
-            StateMachineModes.CALIBRATE_P2_FLEX: []
+            StateMachineModes.CALIBRATE_P1_RELAX: 0,
+            StateMachineModes.CALIBRATE_P1_FLEX: 0,
+            StateMachineModes.CALIBRATE_P2_RELAX: 0,
+            StateMachineModes.CALIBRATE_P2_FLEX: 0
         }
 
         self.setWindowTitle("EMG Game Controller")
@@ -239,37 +239,57 @@ class MainWindow(QtWidgets.QMainWindow):
             self.write_to_cmd(f"Beginning calibration for {self._mode.value}.")
         if self._mode == StateMachineModes.CALIBRATE_P1_RELAX and self._tick_count == CALIBRATION_ELAPSED:
             self.write_to_cmd(f"Calibration for {self._mode.value} completed.")
-            pass
+            self.calibrate()
             self._mode = StateMachineModes.CALIBRATE_P1_FLEX
             self.write_to_cmd(f"Beginning calibration for {self._mode.value}.")
             self._tick_count = 0
         if self._mode == StateMachineModes.CALIBRATE_P1_FLEX and self._tick_count == CALIBRATION_ELAPSED:
             self.write_to_cmd(f"Calibration for {self._mode.value} completed.")
-            pass
+            self.calibrate()
             self._mode = StateMachineModes.CALIBRATE_P2_RELAX
             self.write_to_cmd(f"Beginning caibration for {self._mode.value}.")
             self._tick_count = 0
         if self._mode == StateMachineModes.CALIBRATE_P2_RELAX and self._tick_count == CALIBRATION_ELAPSED:
             self.write_to_cmd(f"Calibration for {self._mode.value} completed.")
-            pass
+            self.calibrate()
             self._mode=StateMachineModes.CALIBRATE_P2_FLEX
             self.write_to_cmd(f"Beginning calibration for {self._mode.value}.")
             self._tick_count = 0
         if self._mode == StateMachineModes.CALIBRATE_P2_FLEX and self._tick_count == CALIBRATION_ELAPSED:
             self.write_to_cmd(f"Calibration for {self._mode.value} completed.")
-            pass
+            self.calibrate()
             self.write_to_cmd("Calibration completed.")
             self._mode = StateMachineModes.IDLE
             self.calibrationButton.setEnabled(True)
             self.calibration_timer.stop()
+            self.write_to_cmd(f"P1 Relax: {self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX]}")
+            self.write_to_cmd(f"P1 Flex: {self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX]}")
+            self.write_to_cmd(f"P2 Relax: {self.calibration_data[StateMachineModes.CALIBRATE_P2_RELAX]}")
+            self.write_to_cmd(f"P2 Flex: {self.calibration_data[StateMachineModes.CALIBRATE_P2_FLEX]}")
             self._tick_count = 0
             return
 
         if self._tick_count != 0:
             self.write_to_cmd(f"{self._tick_count}...")
         self._tick_count = self._tick_count + 1
+    
+    # Last second of data for calibration
+    def calibrate(self):
         
-
+        samp0 = [x[1] for x in self.rolling_data[-10:]]
+        samp1 = [x[2] for x in self.rolling_data[-10:]]
+        samp0 = list(itertools.chain(*samp0))
+        samp1 = list(itertools.chain(*samp1))
+        samp0 = [abs(x) for x in samp0]
+        samp1 = [abs(x) for x in samp1]
+        if self._mode == StateMachineModes.CALIBRATE_P1_RELAX:
+            self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX] = sum(samp0)/(2*10*TICK_INTERVAL)
+        if self._mode == StateMachineModes.CALIBRATE_P1_FLEX:
+            self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX] = (sum(samp1) - sum(samp0))/(2*10*TICK_INTERVAL)
+        if self._mode == StateMachineModes.CALIBRATE_P2_RELAX:
+            pass
+        if self._mode == StateMachineModes.CALIBRATE_P2_FLEX:
+            pass
 
     def tick(self):
         self.info.setText(f"Current State: {self._mode.value}")
