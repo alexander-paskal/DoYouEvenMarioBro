@@ -1,6 +1,10 @@
 from PySide6 import QtWidgets, QtCore
 from functools import partial
 
+from nes_py.wrappers import JoypadSpace
+import gym_super_mario_bros
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
+
 import pyqtgraph as pg
 import struct
 import time, socket
@@ -41,15 +45,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.timestep = timestep
 
         self._mode = StateMachineModes.IDLE
-        self._state_machine_count_down = 0
         self._tick_count = 0
 
         #self._record_state = False
         self.calibration_data = {
-            StateMachineModes.CALIBRATE_P1_RELAX: 0,
-            StateMachineModes.CALIBRATE_P1_FLEX: 0,
-            StateMachineModes.CALIBRATE_P2_RELAX: 0,
-            StateMachineModes.CALIBRATE_P2_FLEX: 0
+            StateMachineModes.CALIBRATE_P1_RELAX:None,
+            StateMachineModes.CALIBRATE_P1_FLEX:None,
+            StateMachineModes.CALIBRATE_P2_RELAX:None,
+            StateMachineModes.CALIBRATE_P2_FLEX: None
         }
 
         self.setWindowTitle("EMG Game Controller")
@@ -115,9 +118,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.button_grp_vbox0 = QtWidgets.QVBoxLayout()
         self.button_grp.setLayout(self.button_grp_vbox0)
 
-        self.plotButton = QtWidgets.QPushButton("Do Plot")
-        self.plotButton.clicked.connect(self.draw_plot)
-        self.button_grp_vbox0.addWidget(self.plotButton)
+        # self.plotButton = QtWidgets.QPushButton("Do Plot")
+        # self.plotButton.clicked.connect(self.draw_plot)
+        # self.button_grp_vbox0.addWidget(self.plotButton)
 
         self.calibrationButton = QtWidgets.QPushButton("Calibration")
         self.calibrationButton.setEnabled(False)
@@ -126,10 +129,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gameButton = QtWidgets.QPushButton("Begin Game")
         self.gameButton.setCheckable(True)
         self.gameButton.setEnabled(False)
-        if self.gameButton.isChecked() != True:
-            self.gameButton.setStyleSheet("background-color: red")
-        else:
-            self.gameButton.setStyleSheet("background-color: green")
         self.button_grp_vbox0.addWidget(self.gameButton)
 
         self.info = QtWidgets.QLabel(f"Current State: {self._mode.value}")
@@ -261,6 +260,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.write_to_cmd("Calibration completed.")
             self._mode = StateMachineModes.IDLE
             self.calibrationButton.setEnabled(True)
+            self.gameButton.setEnabled(True)
+
             self.calibration_timer.stop()
             self.write_to_cmd(f"P1 Relax: {self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX]}")
             self.write_to_cmd(f"P1 Flex: {self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX]}")
@@ -282,6 +283,8 @@ class MainWindow(QtWidgets.QMainWindow):
         samp1 = list(itertools.chain(*samp1))
         samp0 = [abs(x) for x in samp0]
         samp1 = [abs(x) for x in samp1]
+        print(len(samp0))
+        print(len(samp1))
         if self._mode == StateMachineModes.CALIBRATE_P1_RELAX:
             self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX] = sum(samp0)/(2*10*TICK_INTERVAL)
         if self._mode == StateMachineModes.CALIBRATE_P1_FLEX:
@@ -370,6 +373,22 @@ def main():
     scommand.sendall(b"set notchfilterfreqhertz 60")
     time.sleep(SERVER_WAIT)
 
+    scommand.sendall(b"set dspenabled true")
+    time.sleep(SERVER_WAIT)
+
+    scommand.sendall(b"set desireddspcutofffreqhertz 20")
+    time.sleep(SERVER_WAIT)
+
+    scommand.sendall(b"set desiredlowerbandwidthhertz 2")
+    time.sleep(SERVER_WAIT)
+
+    scommand.sendall(b"set desiredupperbandwidthhertz 450")
+    time.sleep(SERVER_WAIT)
+
+    scommand.sendall(b"get actuallowerbandwidthhertz")
+    print(str(scommand.recv(COMMAND_BUFFER_SIZE), "utf-8"))
+    scommand.sendall(b"get actualupperbandwidthhertz")
+    print(str(scommand.recv(COMMAND_BUFFER_SIZE), "utf-8"))   
     scommand.sendall(b'execute clearalldataoutputs')
     time.sleep(SERVER_WAIT)
 
