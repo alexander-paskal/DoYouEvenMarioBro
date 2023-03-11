@@ -28,6 +28,67 @@ def integrate(a, n_buckets=60):
     return np.array(buckets)
 
 
+class SignalProcessor:
+    def __init__(self, maxlen=50, threshold1 = 0, threshold_diff = 0):
+        fig, axs = plt.subplots(4)
+        self.ax1 = axs[0]
+        self.ax2 = axs[1]
+        self.ax3 = axs[2]
+        self.ax4 = axs[3]
+
+        self.threshold1 = threshold1
+        self.threshold_diff = threshold_diff
+        self.maxlen = 50
+
+        self.ints1 = []
+        self.ints2 = []
+        self.diff = []
+        self.tick_count = 0
+        self.ticks = []
+
+        self.ma_int1 = []
+        self.ma_int2 = []
+        self.ma_diff = []
+
+        self.controls = []
+
+    def update(self, ts, samp0, samp1):
+
+        int1 = np.sum(np.abs(np.array(samp0))) / len(samp0)
+        int2 = np.sum(np.abs(np.array(samp1))) / len(samp1)
+        diff = int1 - int2
+
+        self.ints1.append(int1)
+        self.ints2.append(int2)
+        self.diff.append(diff)
+        self.tick_count += 1
+        self.ticks.append(self.tick_count)
+
+        ma_diff = moving_average(self.diff)
+        ma_int1 = moving_average(self.ints1)
+        ma_int2 = moving_average(self.ints2)
+
+        self.ma_int1.append(ma_int1)
+        self.ma_int2.append(ma_int2)
+        self.ma_diff.append(ma_diff)
+
+        # get controls
+        c1 = ma_int1 > self.threshold1
+        c2 = diff > self.threshold_diff
+
+        control_bin = f"{int(c1)}{int(c2)}"
+        control = int(control_bin, 2)
+        self.controls.append(control)
+
+        if len(self.ints1) > self.maxlen:
+            self.ints1 = self.ints1[-self.maxlen:]
+            self.ints2 = self.ints2[-self.maxlen:]
+            self.ticks = self.ticks[-self.maxlen:]
+            self.ma_int1 = self.ma_int1[-self.maxlen:]
+            self.ma_int2 = self.ma_int2[-self.maxlen:]
+            self.ma_diff = self.ma_diff[-self.maxlen:]
+
+
 def main():
     PATH = "data/botharms_230301_155959/amplifier_data.txt"
     T_PATH = "data/botharms_230301_155959/t_amplifier.txt"

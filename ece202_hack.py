@@ -12,6 +12,8 @@ import time, socket
 import enum
 import numpy as np
 import itertools
+import matplotlib.pyplot as plt
+
 
 
 COMMAND_BUFFER_SIZE = 1024
@@ -20,6 +22,7 @@ WAVEFORM_BUFFER_SIZE = 400000
 TICK_INTERVAL = 0.1
 CALIBRATION_ELAPSED = 5
 SERVER_WAIT = 0.05
+
 
 class StateMachineModes(enum.Enum):
     IDLE = "Idle"
@@ -45,6 +48,13 @@ class MainWindow(QtWidgets.QMainWindow):
         self.env = gym.make('SuperMarioBros-v0', apply_api_compatibility=True, render_mode="human")
         self.env = JoypadSpace(self.env, RIGHT_ONLY)
         self.env.reset()
+
+
+        self.fig, self.axs = plt.subplots()
+        self._ints1 = []
+        self._ints2 = []
+        self._ticks = []
+        self._my_tick_count = 0
 
         self.scommand = scommand
         self.swaveform = swaveform
@@ -183,7 +193,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.calibrationButton.setEnabled(True)
             self.scommand.sendall(b'set runmode run')
         time.sleep(SERVER_WAIT)
-
 
     def remove_from_selected_ports(self, double_clicked_port):
         self.available_ports.addItem(PortListWidgetItem(double_clicked_port.text()))
@@ -329,6 +338,47 @@ class MainWindow(QtWidgets.QMainWindow):
                     ),
                 )
         ts, samp0, samp1 = zip(*data)
+
+        int1 = np.sum(np.abs(np.array(samp0))) / len(samp0)
+        int2 = np.sum(np.abs(np.array(samp1))) / len(samp1)
+
+        self._ints1.append(int1)
+        self._ints2.append(int2)
+        self._my_tick_count += 1
+        self._ticks.append(self._my_tick_count)
+
+
+        MAX_LEN = 50
+        if len(self._ints1) > MAX_LEN:
+            self._ints1 = self._ints1[-MAX_LEN:]
+            self._ints2 = self._ints2[-MAX_LEN:]
+            self._ticks = self._ticks[-MAX_LEN:]
+
+        # get controls
+
+        # ma_uncoupled = moving_average(self._ints1)
+        diff = np.array(self._ints1) - np.array(self._ints2)
+        # ma_diff = moving_average(diff)
+        #
+        # controlbit1 = ma_uncoupled > threshold_uncoupled
+        # controlbit12 = ma_diff > threshold_diff
+        #
+        # action = controlmap[(controlbit1, controlbit12)]
+
+
+
+
+        # thresholds
+        thresh1 = [self.thr]
+
+        self.axs.clear()
+        self.axs.plot(self._ticks, self._ints1)
+        self.axs.plot(self._ticks, self._ints2)
+
+        self.axs.plot(self._ticks, diff)
+        plt.draw()
+        plt.pause(0.00001)
+
         self.rolling_data = self.rolling_data[-20:] + [(ts, samp0, samp1)]
         self.plot_time_domain_data()
         # THIS 
@@ -355,7 +405,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 
     def begin_game(self):
         pass
-
 
 def main():
     print('Connecting to TCP command server...')
@@ -433,6 +482,7 @@ def main():
     if not isStopped:
         scommand.sendall(b'set runmode stop')
         time.sleep(0.1)
+
 
 if __name__ == '__main__':
     main()
