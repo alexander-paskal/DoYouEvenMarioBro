@@ -27,6 +27,7 @@ class StateMachineModes(enum.Enum):
     CALIBRATE_P1_FLEX = "Player 1 Flex"
     CALIBRATE_P2_RELAX = "Player 2 Relax"
     CALIBRATE_P2_FLEX = "Player 2 Flex"
+    
 
 
 class PortListWidgetItem(QtWidgets.QListWidgetItem):
@@ -43,6 +44,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.env = gym.make('SuperMarioBros-v0', apply_api_compatibility=True, render_mode="human")
         self.env = JoypadSpace(self.env, RIGHT_ONLY)
+        self.env.reset()
 
         self.scommand = scommand
         self.swaveform = swaveform
@@ -58,6 +60,8 @@ class MainWindow(QtWidgets.QMainWindow):
             StateMachineModes.CALIBRATE_P2_RELAX:None,
             StateMachineModes.CALIBRATE_P2_FLEX: None
         }
+
+        self.game_control = 0
 
         self.setWindowTitle("EMG Game Controller")
 
@@ -134,7 +138,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gameButton.setCheckable(True)
         self.gameButton.setEnabled(False)
         self.button_grp_vbox0.addWidget(self.gameButton)
-        self.gameButton.clicked.connect(self.begin_game)
+        #self.gameButton.clicked.connect(self.begin_game)
 
         self.info = QtWidgets.QLabel(f"Current State: {self._mode.value}")
         self.button_grp_vbox0.addWidget(self.info)
@@ -282,18 +286,19 @@ class MainWindow(QtWidgets.QMainWindow):
     # Last second of data for calibration
     def calibrate(self):
         
-        samp0 = [x[1] for x in self.rolling_data[-10:]]
+        samp0 = [x[1] for x in self.rolling_data[-10:]] 
         samp1 = [x[2] for x in self.rolling_data[-10:]]
         samp0 = list(itertools.chain(*samp0))
         samp1 = list(itertools.chain(*samp1))
         samp0 = [abs(x) for x in samp0]
         samp1 = [abs(x) for x in samp1]
-        print(len(samp0))
-        print(len(samp1))
+        print(f"Samp 0 length:{len(samp0)}")
+        print(f"Samp 1 length:{len(samp1)}")
+        print(f"Rolling data length: {len(self.rolling_data)}")
         if self._mode == StateMachineModes.CALIBRATE_P1_RELAX:
-            self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX] = sum(samp0)/(2*10*TICK_INTERVAL)
+            self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX] = sum(samp0)/(2* len(samp0))
         if self._mode == StateMachineModes.CALIBRATE_P1_FLEX:
-            self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX] = (sum(samp1) - sum(samp0))/(2*10*TICK_INTERVAL)
+            self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX] = (sum(samp1) - sum(samp0))/(2*len(samp0))
         if self._mode == StateMachineModes.CALIBRATE_P2_RELAX:
             pass
         if self._mode == StateMachineModes.CALIBRATE_P2_FLEX:
@@ -325,24 +330,32 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
         ts, samp0, samp1 = zip(*data)
         self.rolling_data = self.rolling_data[-20:] + [(ts, samp0, samp1)]
-        self.plot_time_domain_data()                
+        self.plot_time_domain_data()
+        # THIS 
+        if self.gameButton.isChecked() and any(x is not None for x in self.calibration_data.values()):
+            done = False
+
+            self.env.render()
+
+            action = self.env.action_space.sample()
+            for x in range(100):
+                obs, reward, terminated, truncated, info = self.env.step(action)
+            done = terminated or truncated
+            # Run out of lives set done
+            if done:
+                state = self.env.reset()
+            # self.env.close()
+
+
+
                 #self.plot_zone_td1.plot(np.abs(np.fft.fft(samp0))**2, pen=pg.mkPen(color='m'))
                 #self.plot_zone_td1.plot(np.abs(np.fft.fft(samp1))**2, pen=pg.mkPen(color='w'))
         # if self._tick_count * TICK_INTERVAL == CALIBRATION_ELAPSED:
                 # self.plot_calibration_data()
                 
     def begin_game(self):
-        done = True
-        self.env.reset()
-        for step in range(1000):
-            action = self.env.action_space.sample()
-            obs, reward, terminated, truncated, info = self.env.step(action)
-            done = terminated or truncated
+        pass
 
-            if done:
-                state = self.env.reset()
-        self.env.close()
-        
 def main():
     print('Connecting to TCP command server...')
     scommand = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
