@@ -3,7 +3,8 @@ from functools import partial
 
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
-from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
+from gym_super_mario_bros.actions import RIGHT_ONLY
+import gym
 
 import pyqtgraph as pg
 import struct
@@ -39,6 +40,9 @@ class PortListWidgetItem(QtWidgets.QListWidgetItem):
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, scommand, swaveform, timestep):
         super().__init__()
+
+        self.env = gym.make('SuperMarioBros-v0', apply_api_compatibility=True, render_mode="human")
+        self.env = JoypadSpace(self.env, RIGHT_ONLY)
 
         self.scommand = scommand
         self.swaveform = swaveform
@@ -130,6 +134,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.gameButton.setCheckable(True)
         self.gameButton.setEnabled(False)
         self.button_grp_vbox0.addWidget(self.gameButton)
+        self.gameButton.clicked.connect(self.begin_game)
 
         self.info = QtWidgets.QLabel(f"Current State: {self._mode.value}")
         self.button_grp_vbox0.addWidget(self.info)
@@ -304,9 +309,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.scommand.sendall(b'set runmode stop')
             self.gameButton.setEnabled(False)
             return
-
-        self.gameButton.setEnabled(bool(self.calibration_data[StateMachineModes.CALIBRATE_P2_RELAX])) #Better check?
-
             # self.scommand.sendall(b'set runmode stop')
             # time.sleep(SERVER_WAIT)
         data = []
@@ -328,7 +330,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 #self.plot_zone_td1.plot(np.abs(np.fft.fft(samp1))**2, pen=pg.mkPen(color='w'))
         # if self._tick_count * TICK_INTERVAL == CALIBRATION_ELAPSED:
                 # self.plot_calibration_data()
-    
+                
+    def begin_game(self):
+        done = True
+        self.env.reset()
+        for step in range(1000):
+            action = self.env.action_space.sample()
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            done = terminated or truncated
+
+            if done:
+                state = self.env.reset()
+        self.env.close()
+        
 def main():
     print('Connecting to TCP command server...')
     scommand = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
