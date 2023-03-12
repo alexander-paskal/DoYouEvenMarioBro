@@ -29,16 +29,17 @@ def integrate(a, n_buckets=60):
 
 
 class SignalProcessor:
-    def __init__(self, maxlen=50, threshold1 = 0, threshold_diff = 0):
-        fig, axs = plt.subplots(4)
+    def __init__(self, maxlen=50, ma_window=None, threshold1 = 0, threshold_diff = 0):
+        self.fig, axs = plt.subplots(3)
         self.ax1 = axs[0]
         self.ax2 = axs[1]
         self.ax3 = axs[2]
-        self.ax4 = axs[3]
 
         self.threshold1 = threshold1
         self.threshold_diff = threshold_diff
-        self.maxlen = 50
+        self.maxlen = maxlen
+
+        self.ma_window = maxlen if ma_window is None else ma_window
 
         self.ints1 = []
         self.ints2 = []
@@ -52,11 +53,11 @@ class SignalProcessor:
 
         self.controls = []
 
-    def update(self, ts, samp0, samp1):
+    def update(self, samp0, samp1):
 
         int1 = np.sum(np.abs(np.array(samp0))) / len(samp0)
         int2 = np.sum(np.abs(np.array(samp1))) / len(samp1)
-        diff = int1 - int2
+        diff = abs(int1 - int2)
 
         self.ints1.append(int1)
         self.ints2.append(int2)
@@ -64,9 +65,9 @@ class SignalProcessor:
         self.tick_count += 1
         self.ticks.append(self.tick_count)
 
-        ma_diff = moving_average(self.diff)
-        ma_int1 = moving_average(self.ints1)
-        ma_int2 = moving_average(self.ints2)
+        ma_diff = self.moving_average(self.diff)
+        ma_int1 = self.moving_average(self.ints1)
+        ma_int2 = self.moving_average(self.ints2)
 
         self.ma_int1.append(ma_int1)
         self.ma_int2.append(ma_int2)
@@ -84,9 +85,35 @@ class SignalProcessor:
             self.ints1 = self.ints1[-self.maxlen:]
             self.ints2 = self.ints2[-self.maxlen:]
             self.ticks = self.ticks[-self.maxlen:]
+            self.diff = self.diff[-self.maxlen:]
             self.ma_int1 = self.ma_int1[-self.maxlen:]
             self.ma_int2 = self.ma_int2[-self.maxlen:]
             self.ma_diff = self.ma_diff[-self.maxlen:]
+            self.controls = self.controls[-self.maxlen:]
+
+    def moving_average(self, s):
+        return np.sum(s[-self.ma_window:]) / self.ma_window
+
+    def plot(self):
+        self.ax1.clear()
+        self.ax2.clear()
+        self.ax3.clear()
+
+        self.ax1.plot(self.ticks, self.ma_int1, label="Energy of Signal 1", c="blue")
+        self.ax1.set_title("Stream 1")
+        self.ax1.plot(self.ticks, self.ma_int2, label="Energy of Signal 2", c="yellow")
+        self.ax1.plot(self.ticks, [self.threshold1 for _ in self.ticks], label="Uncoupled Threshold", linestyle='dashed')
+        self.ax1.legend()
+
+        self.ax2.plot(self.ticks, self.diff, label="Difference in Integrations")
+        self.ax2.plot(self.ticks, self.ma_diff, label="Moving Average")
+        self.ax2.set_title("Stream 1 - Stream 2")
+        self.ax2.plot(self.ticks, [self.threshold_diff for _ in self.ticks], label="Difference Threshold", linestyle="dashed")
+        self.ax2.legend()
+
+        self.ax3.plot(self.ticks, self.controls)
+        plt.draw()
+        plt.pause(0.001)
 
 
 def main():

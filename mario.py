@@ -1,7 +1,7 @@
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-env = gym_super_mario_bros.make('SuperMarioBros-v0')
+env = gym_super_mario_bros.make('SuperMarioBros-v0', apply_api_compatibility=True, render_mode="human")
 env = JoypadSpace(env, SIMPLE_MOVEMENT)
 
 import time
@@ -19,8 +19,9 @@ for step in range(5000):
     if done:
         state = env.reset()
     # action = env.action_space.sample()#\
-    action = choose_action(action)
-    state, reward, done, info = env.step(action)
+    # action = choose_action(action)
+    action = 6
+    obs, state, reward, done, info = env.step(action)
     time.sleep(0.01)
     space = env.action_space
     env.render()

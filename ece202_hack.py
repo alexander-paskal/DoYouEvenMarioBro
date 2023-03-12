@@ -3,7 +3,7 @@ from functools import partial
 
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
-from gym_super_mario_bros.actions import RIGHT_ONLY
+from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
 import gym
 
 import pyqtgraph as pg
@@ -14,6 +14,7 @@ import numpy as np
 import itertools
 import matplotlib.pyplot as plt
 
+from plot_emg import SignalProcessor
 
 
 COMMAND_BUFFER_SIZE = 1024
@@ -33,6 +34,14 @@ class StateMachineModes(enum.Enum):
     
 
 
+ACTIONS = {
+    0: 0,  # relaxed -> no movement
+    1: 1,  # right arm -> move right
+    2: 6,  # left arm -> move left
+    3: 5,  # both arms -> move right and jump
+}
+
+
 class PortListWidgetItem(QtWidgets.QListWidgetItem):
     def __lt__(self, other):
         try:
@@ -46,29 +55,27 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__()
 
         self.env = gym.make('SuperMarioBros-v0', apply_api_compatibility=True, render_mode="human")
-        self.env = JoypadSpace(self.env, RIGHT_ONLY)
+        self.env = JoypadSpace(self.env, SIMPLE_MOVEMENT)
         self.env.reset()
+        self.ma_window = 3
 
-
-        self.fig, self.axs = plt.subplots()
-        self._ints1 = []
-        self._ints2 = []
-        self._ticks = []
-        self._my_tick_count = 0
+        self.sig_processor = SignalProcessor(threshold1=30, threshold_diff=100,  ma_window=3)
 
         self.scommand = scommand
         self.swaveform = swaveform
         self.timestep = timestep
+
+
 
         self._mode = StateMachineModes.IDLE
         self._tick_count = 0
 
         #self._record_state = False
         self.calibration_data = {
-            StateMachineModes.CALIBRATE_P1_RELAX:None,
-            StateMachineModes.CALIBRATE_P1_FLEX:None,
-            StateMachineModes.CALIBRATE_P2_RELAX:None,
-            StateMachineModes.CALIBRATE_P2_FLEX: None
+            StateMachineModes.CALIBRATE_P1_RELAX:0,
+            StateMachineModes.CALIBRATE_P1_FLEX:0,
+            StateMachineModes.CALIBRATE_P2_RELAX:0,
+            StateMachineModes.CALIBRATE_P2_FLEX:0
         }
 
         self.game_control = 0
@@ -146,7 +153,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.gameButton = QtWidgets.QPushButton("Begin Game")
         self.gameButton.setCheckable(True)
-        self.gameButton.setEnabled(False)
+        self.gameButton.setEnabled(True)
         self.button_grp_vbox0.addWidget(self.gameButton)
         #self.gameButton.clicked.connect(self.begin_game)
 
@@ -291,6 +298,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if self._tick_count != 0:
             self.write_to_cmd(f"{self._tick_count}...")
         self._tick_count = self._tick_count + 1
+
+        # self.sig_processor = SignalProcessor(
+        #     threshold1=self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX],
+        #     threshold_diff=self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX],
+        #     ma_window=self.ma_window
+        # )
     
     # Last second of data for calibration
     def calibrate(self):
@@ -321,7 +334,7 @@ class MainWindow(QtWidgets.QMainWindow):
             time.sleep(SERVER_WAIT)
             if (str(self.scommand.recv(COMMAND_BUFFER_SIZE), "utf-8") != "Return: RunMode Stop"):
                 self.scommand.sendall(b'set runmode stop')
-            self.gameButton.setEnabled(False)
+            self.gameButton.setEnabled(True)
             return
             # self.scommand.sendall(b'set runmode stop')
             # time.sleep(SERVER_WAIT)
@@ -329,66 +342,38 @@ class MainWindow(QtWidgets.QMainWindow):
         raw_data = self.swaveform.recv(1028*16)
         for block_data in raw_data.split(struct.pack("<I", 0x2ef07a08))[1:]:
             # raw_sample[0] is the lowest selected channel
-            for raw_timestamp, raw_samples0, raw_samples1 in struct.iter_unpack(f"<iHH", block_data):
-                data.append(
-                    (
-                        raw_timestamp * self.timestep,
-                        (raw_samples0 - 32768)*0.195,
-                        (raw_samples1 - 32768)*0.195,
-                    ),
-                )
+            try:
+                for raw_timestamp, raw_samples0, raw_samples1 in struct.iter_unpack(f"<iHH", block_data):
+                    data.append(
+                        (
+                            raw_timestamp * self.timestep,
+                            (raw_samples0 - 32768)*0.195,
+                            (raw_samples1 - 32768)*0.195,
+                        ),
+                    )
+            except struct.error:
+                self.info.setText("data error, skipping data point")
+                return
+
         ts, samp0, samp1 = zip(*data)
 
-        int1 = np.sum(np.abs(np.array(samp0))) / len(samp0)
-        int2 = np.sum(np.abs(np.array(samp1))) / len(samp1)
+        self.sig_processor.update(samp0, samp1)
+        self.sig_processor.plot()
 
-        self._ints1.append(int1)
-        self._ints2.append(int2)
-        self._my_tick_count += 1
-        self._ticks.append(self._my_tick_count)
+        control = self.sig_processor.controls[-1]
+        action = ACTIONS[control]
 
-
-        MAX_LEN = 50
-        if len(self._ints1) > MAX_LEN:
-            self._ints1 = self._ints1[-MAX_LEN:]
-            self._ints2 = self._ints2[-MAX_LEN:]
-            self._ticks = self._ticks[-MAX_LEN:]
-
-        # get controls
-
-        # ma_uncoupled = moving_average(self._ints1)
-        diff = np.array(self._ints1) - np.array(self._ints2)
-        # ma_diff = moving_average(diff)
-        #
-        # controlbit1 = ma_uncoupled > threshold_uncoupled
-        # controlbit12 = ma_diff > threshold_diff
-        #
-        # action = controlmap[(controlbit1, controlbit12)]
-
-
-
-
-        # thresholds
-        thresh1 = [self.thr]
-
-        self.axs.clear()
-        self.axs.plot(self._ticks, self._ints1)
-        self.axs.plot(self._ticks, self._ints2)
-
-        self.axs.plot(self._ticks, diff)
-        plt.draw()
-        plt.pause(0.00001)
 
         self.rolling_data = self.rolling_data[-20:] + [(ts, samp0, samp1)]
         self.plot_time_domain_data()
         # THIS 
         if self.gameButton.isChecked() and any(x is not None for x in self.calibration_data.values()):
             done = False
-
+            print("game actionable")
             self.env.render()
 
-            action = self.env.action_space.sample()
-            for x in range(100):
+            # action = self.env.action_space.sample()
+            for x in range(12):
                 obs, reward, terminated, truncated, info = self.env.step(action)
             done = terminated or truncated
             # Run out of lives set done
