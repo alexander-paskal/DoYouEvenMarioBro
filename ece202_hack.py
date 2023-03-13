@@ -450,7 +450,9 @@ def main():
     scommand.sendall(b"get actuallowerbandwidthhertz")
     print(str(scommand.recv(COMMAND_BUFFER_SIZE), "utf-8"))
     scommand.sendall(b"get actualupperbandwidthhertz")
-    print(str(scommand.recv(COMMAND_BUFFER_SIZE), "utf-8"))   
+    print(str(scommand.recv(COMMAND_BUFFER_SIZE), "utf-8"))
+    scommand.sendall(b"execute updatebandwidthsettings")
+    print(str(scommand.recv(COMMAND_BUFFER_SIZE), "utf-8"))
     scommand.sendall(b'execute clearalldataoutputs')
     time.sleep(SERVER_WAIT)
 
