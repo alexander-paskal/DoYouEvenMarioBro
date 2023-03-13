@@ -12,6 +12,7 @@ def moving_average(a, n=3) :
 
 
 def integrate(a, n_buckets=60):
+    a = np.power(a, 2)
     n = a.shape[0]
     buckets = []
     for i in range(n_buckets):
@@ -120,6 +121,7 @@ def main():
     PATH = "data/botharms_230301_155959/amplifier_data.txt"
     T_PATH = "data/botharms_230301_155959/t_amplifier.txt"
     fig, axs = plt.subplots(4)
+    fig.tight_layout()
     ax1 = axs[0]
     ax2 = axs[1]
     ax3 = axs[2]
@@ -137,7 +139,7 @@ def main():
     ts = ts[LEFT:RIGHT]
 
     ax1.plot(ts, data[0], label="Signal 1")
-    ax1.set_title("Stream 1")
+    ax1.set_title("Raw Signal Streams")
     ax1.plot(ts, data[1], label="Signal 2")
 
     # # moving averages
@@ -155,22 +157,22 @@ def main():
 
     ma1 = moving_average(i1, 20)
     ma2 = moving_average(i2, 20)
-    ax2.plot(t_ints, ma1, label="AbsIntegration of Signal 1")
-    ax2.plot(t_ints, ma2, label="AbsIntegration of Signal 2")
+    ax2.plot(t_ints, ma1, label="Signal 1 Energy")
+    ax2.plot(t_ints, ma2, label="Signal 2 Energy")
     # ax2.plot(t_ints, i1 - i2)
 
     # ax2.set_title("Stream 2")
-    ax3.plot(t_ints, i1 - i2, label="Difference in Integrations")
+    ax3.plot(t_ints, i1 - i2, label="Energy Difference")
     ma_diff = moving_average(i1 - i2, 20)
     # ma_diff = moving_average(i1, 20) - moving_average(i2, 20)
     ax3.plot(t_ints, ma_diff, label="MA50")
     ax3.set_title("Stream 1 - Stream 2")
-    fig.suptitle(f"{START} seconds to {STOP} seconds")
+    # fig.suptitle(f"{START} seconds to {STOP} seconds")
 
 
     # extracting control signal
-    righthand = ma2 > 2e5
-    diff = ma_diff > 1e5
+    righthand = ma2 > 5e7
+    diff = ma_diff > 1.3e8
 
     bothhands = np.logical_and(diff, righthand)
     lefthand_only = np.logical_and(righthand, ~bothhands)
@@ -184,7 +186,7 @@ def main():
     controls[bothhands] = 3
 
     ax4.plot(t_ints, controls)
-
+    ax4.set_title("Controls\n0=NA, 1=MF, 2=MB, 3=JF")
     ax1.legend()
     ax2.legend()
     ax3.legend()
