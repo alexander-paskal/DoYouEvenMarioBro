@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def moving_average(a, n=3) :
+def moving_average(a, n=3):
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
     ma = ret[n - 1:] / n
@@ -30,7 +30,7 @@ def integrate(a, n_buckets=60):
 
 
 class SignalProcessor:
-    def __init__(self, maxlen=50, ma_window=None, threshold1 = 0, threshold_diff = 0):
+    def __init__(self, maxlen=50, ma_window=None, threshold1 = 0, threshold_diff = 0, flip=False):
         self.fig, axs = plt.subplots(3)
         self.ax1 = axs[0]
         self.ax2 = axs[1]
@@ -39,6 +39,7 @@ class SignalProcessor:
         self.threshold1 = threshold1
         self.threshold_diff = threshold_diff
         self.maxlen = maxlen
+        self.flip = flip
 
         self.ma_window = maxlen if ma_window is None else ma_window
 
@@ -54,11 +55,19 @@ class SignalProcessor:
 
         self.controls = []
 
+
+
+
     def update(self, samp0, samp1):
 
         int1 = np.sum(np.abs(np.array(samp0))) / len(samp0)
         int2 = np.sum(np.abs(np.array(samp1))) / len(samp1)
-        diff = abs(int1 - int2)
+
+        if self.flip:
+            int1, int2 = int2, int1
+
+        # diff = abs(int1 - int2)
+        diff = int2
 
         self.ints1.append(int1)
         self.ints2.append(int2)
@@ -100,9 +109,9 @@ class SignalProcessor:
         self.ax2.clear()
         self.ax3.clear()
 
-        self.ax1.plot(self.ticks, self.ma_int1, label="Energy of Signal 1", c="blue")
+        self.ax1.plot(self.ticks, self.ma_int1, label="Energy of Left Arm", c="blue")
         self.ax1.set_title("Stream 1")
-        self.ax1.plot(self.ticks, self.ma_int2, label="Energy of Signal 2", c="yellow")
+        self.ax1.plot(self.ticks, self.ma_int2, label="Energy of Right Arm", c="yellow")
         self.ax1.plot(self.ticks, [self.threshold1 for _ in self.ticks], label="Uncoupled Threshold", linestyle='dashed')
         self.ax1.legend()
 
