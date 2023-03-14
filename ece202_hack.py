@@ -1,6 +1,6 @@
 from PySide6 import QtWidgets, QtCore
 from functools import partial
-
+from cProfile import run
 from nes_py.wrappers import JoypadSpace
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
@@ -27,10 +27,10 @@ SERVER_WAIT = 0.05
 
 class StateMachineModes(enum.Enum):
     IDLE = "Idle"
-    CALIBRATE_P1_RELAX = "Player 1 Relax"
-    CALIBRATE_P1_FLEX = "Player 1 Flex"
-    CALIBRATE_P2_RELAX = "Player 2 Relax"
-    CALIBRATE_P2_FLEX = "Player 2 Flex"
+    CALIBRATE_P1_RELAX = "Left Arm Relax"
+    CALIBRATE_P1_FLEX = "Left Arm Flex"
+    CALIBRATE_P2_RELAX = "Right Arm Relax"
+    CALIBRATE_P2_FLEX = "Right Arm Flex"
     
 
 
@@ -54,18 +54,16 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, scommand, swaveform, timestep):
         super().__init__()
 
-        self.env = gym.make('SuperMarioBros-v0', apply_api_compatibility=True, render_mode="human")
+        self.env = gym.make('SuperMarioBros2-v1', apply_api_compatibility=True, render_mode="human")
         self.env = JoypadSpace(self.env, SIMPLE_MOVEMENT)
         self.env.reset()
         self.ma_window = 3
 
-        self.sig_processor = SignalProcessor(threshold1=30, threshold_diff=100,  ma_window=3)
+        self.sig_processor = SignalProcessor(threshold1=50, threshold_diff=35,  ma_window=3, flip=True)
 
         self.scommand = scommand
         self.swaveform = swaveform
         self.timestep = timestep
-
-
 
         self._mode = StateMachineModes.IDLE
         self._tick_count = 0
@@ -101,7 +99,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.available_ports = QtWidgets.QListWidget()
         for x in range(32):
             self.available_ports.addItem(PortListWidgetItem(f"A-{x:03}"))
-            self.available_ports.addItem(PortListWidgetItem(f"D-{x:03}"))
+            self.available_ports.addItem(PortListWidgetItem(f"B-{x:03}"))
         self.available_ports.itemDoubleClicked.connect(self.add_to_selected_ports)
         self.available_ports.setSortingEnabled(True)
         self.port_selection_grp_vbox0.addWidget(self.available_ports)
@@ -258,6 +256,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def calibration_tick(self):
         self.calibrationButton.setEnabled(False)
+
         if self._mode == StateMachineModes.IDLE:
             self._mode = StateMachineModes.CALIBRATE_P1_RELAX
             self.write_to_cmd(f"Beginning calibration for {self._mode.value}.")
@@ -293,6 +292,15 @@ class MainWindow(QtWidgets.QMainWindow):
             self.write_to_cmd(f"P2 Relax: {self.calibration_data[StateMachineModes.CALIBRATE_P2_RELAX]}")
             self.write_to_cmd(f"P2 Flex: {self.calibration_data[StateMachineModes.CALIBRATE_P2_FLEX]}")
             self._tick_count = 0
+
+            lflex = self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX]
+            lrelax = self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX]
+            rflex = self.calibration_data[StateMachineModes.CALIBRATE_P2_FLEX]
+            rrelax = self.calibration_data[StateMachineModes.CALIBRATE_P2_RELAX]
+
+            self.sig_processor.threshold1 = (lflex + lrelax) / 2
+            self.sig_processor.threshold_diff = (rflex + rrelax) / 2
+
             return
 
         if self._tick_count != 0:
@@ -304,27 +312,33 @@ class MainWindow(QtWidgets.QMainWindow):
         #     threshold_diff=self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX],
         #     ma_window=self.ma_window
         # )
-    
+
     # Last second of data for calibration
     def calibrate(self):
-        
-        samp0 = [x[1] for x in self.rolling_data[-10:]] 
-        samp1 = [x[2] for x in self.rolling_data[-10:]]
-        samp0 = list(itertools.chain(*samp0))
-        samp1 = list(itertools.chain(*samp1))
-        samp0 = [abs(x) for x in samp0]
-        samp1 = [abs(x) for x in samp1]
-        print(f"Samp 0 length:{len(samp0)}")
-        print(f"Samp 1 length:{len(samp1)}")
-        print(f"Rolling data length: {len(self.rolling_data)}")
+        # self.tick()
+        # samp0 = [x[1] for x in self.rolling_data[-10:]]
+        # samp1 = [x[2] for x in self.rolling_data[-10:]]
+        # samp0 = list(itertools.chain(*samp0))
+        # samp1 = list(itertools.chain(*samp1))
+        # samp0 = [abs(x) for x in samp0]
+        # samp1 = [abs(x) for x in samp1]
+        # print(f"Samp 0 length:{len(samp0)}")
+        # print(f"Samp 1 length:{len(samp1)}")
+        # print(f"Rolling data length: {len(self.rolling_data)}")
+        # self.tick()
+        thresh1 = np.mean(self.sig_processor.ints1[-200:])
+        thresh2 = np.mean(self.sig_processor.ints2[-200:])
+
         if self._mode == StateMachineModes.CALIBRATE_P1_RELAX:
-            self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX] = sum(samp0)/(2* len(samp0))
+            self.calibration_data[StateMachineModes.CALIBRATE_P1_RELAX] = thresh1
         if self._mode == StateMachineModes.CALIBRATE_P1_FLEX:
-            self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX] = (sum(samp1) - sum(samp0))/(2*len(samp0))
+            self.calibration_data[StateMachineModes.CALIBRATE_P1_FLEX] = thresh1
         if self._mode == StateMachineModes.CALIBRATE_P2_RELAX:
-            pass
+            self.calibration_data[StateMachineModes.CALIBRATE_P2_RELAX] = thresh2
         if self._mode == StateMachineModes.CALIBRATE_P2_FLEX:
-            pass
+            self.calibration_data[StateMachineModes.CALIBRATE_P2_FLEX] = thresh2
+
+
 
     def tick(self):
         self.info.setText(f"Current State: {self._mode.value}")
@@ -374,7 +388,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # action = self.env.action_space.sample()
             for x in range(12):
-                obs, reward, terminated, truncated, info = self.env.step(action)
+                try:
+                    obs, reward, terminated, truncated, info = self.env.step(action)
+                except:
+                    state = self.env.reset()
             done = terminated or truncated
             # Run out of lives set done
             if done:
@@ -390,6 +407,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 
     def begin_game(self):
         pass
+
 
 def main():
     print('Connecting to TCP command server...')
@@ -472,4 +490,5 @@ def main():
 
 
 if __name__ == '__main__':
+    # run("main()", sort="cumtime")
     main()
