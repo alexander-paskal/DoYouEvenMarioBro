@@ -55,9 +55,6 @@ class SignalProcessor:
 
         self.controls = []
 
-
-
-
     def update(self, samp0, samp1):
 
         int1 = np.sum(np.abs(np.array(samp0))) / len(samp0)

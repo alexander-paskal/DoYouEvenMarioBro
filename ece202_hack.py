@@ -54,12 +54,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, scommand, swaveform, timestep):
         super().__init__()
 
-        self.env = gym.make('SuperMarioBros2-v1', apply_api_compatibility=True, render_mode="human")
+        self.env = gym.make('SuperMarioBros-v1', apply_api_compatibility=True, render_mode="human")
         self.env = JoypadSpace(self.env, SIMPLE_MOVEMENT)
         self.env.reset()
         self.ma_window = 3
 
-        self.sig_processor = SignalProcessor(threshold1=50, threshold_diff=35,  ma_window=3, flip=True)
+        self.sig_processor = SignalProcessor(threshold1=50, threshold_diff=35,  ma_window=3, flip=False)
 
         self.scommand = scommand
         self.swaveform = swaveform
